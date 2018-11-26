@@ -1,0 +1,90 @@
+---
+title: "EBI_image_trial"
+author: "Julin N Maloof"
+date: "11/24/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(EBImage)
+library(magrittr)
+imgd <- "~/Box Sync/StreptanthusDimensions/Sample Herbarium Images/Images/"
+images <- dir(imgd)
+```
+
+```{r}
+img = readImage(file.path(imgd,images[1]))
+display(img)
+```
+
+```{r}
+img
+str(img)
+```
+
+```{r}
+imgg <- channel(img,mode="luminance")
+imgg
+display(imgg)
+```
+
+```{r}
+hist(imgg)
+x <- apply(img,3,hist, breaks=100)
+```
+
+
+## find the plants
+
+first threshold it
+```{r}
+threshold <- otsu(imgg) #note that this could be done on the RGB image also; see vignette
+threshold
+imgg.th <- imgg < (threshold * 1.5)
+imgg.th
+display(imgg.th)
+```
+
+fill some holes and connect plants separated by tiedowns
+```{r}
+imgg.cl <- imgg.th %>%
+  dilate(kern = makeBrush(41, "diamond", step = FALSE))
+display(imgg.cl)
+```
+
+
+now find them with bwlabel
+
+```{r}
+imgg.label <- bwlabel(imgg.cl) * imgg.th # multiplying by imgg.th gets rid of extra pixels added during dilation
+imgg.label #each pixel has a number corresponding to its object#
+obj.size <- sort(table(as.factor(imgg.label)), decreasing=TRUE)
+head(obj.size, n=10)
+keep = names(obj.size)[(obj.size > 10000 & obj.size < obj.size[2])] %>% as.numeric()
+
+imgg.label <- {imgg.label * imgg.label %in% keep} %>% #only keep objects in size range
+  as.factor() %>%  #reduce object labels to consecutive numbers
+  as.numeric() %>% 
+  Image(dim=dim(imgg.label)) 
+
+imgg.label
+cols = c("black", rainbow(max(imgg.label)-1))
+imgg.rainbow <- Image(cols[imgg.label], dim=dim(imgg.label))
+imgg.rainbow
+display(imgg.rainbow)
+# get a color key:
+plot(1:length(cols), rep(1,length(cols)), pch=15, col=cols, cex=3)
+```
+
+```{r}
+feat <- computeFeatures(x=imgg.label, ref=imgg, methods.ref=c("computeFeatures.basic", "computeFeatures.shape"))
+str(feat)
+View(feat)
+```
+
+
+next: we are going to want to join objects based on proximity (maybe not needed because of dilation, above)
